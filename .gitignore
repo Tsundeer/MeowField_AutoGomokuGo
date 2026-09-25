@@ -1,0 +1,10 @@
+build/bin/
+build/stage/
+artifacts/
+engines/
+debug/
+node_modules/
+frontend/dist/
+frontend/wailsjs/
+*.exe
+!build/windows/icon.ico

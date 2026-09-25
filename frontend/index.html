@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>MeowField_AutoGomoku · 开放空间</title>
+    <link href="./src/style.css" rel="stylesheet"/>
+</head>
+<body data-theme="dark">
+<div id="app">
+    <div class="left">
+        <canvas id="board" width="500" height="500"></canvas>
+        <div id="status" class="status">正在查找游戏窗口…</div>
+    </div>
+    <div class="right">
+        <div class="head">
+            <div class="title">⚫⚪ MeowField 自动五子棋</div>
+            <div class="subtitle">
+                <span>开放空间 · 自动识别与对弈助手（Rapfi 强引擎）</span>
+                <span id="ver" class="dim"></span>
+                <div class="spacer"></div>
+                <button class="btn gray small" id="btnTheme">浅色</button>
+                <button class="btn gray small" id="btnUpdate">检查更新</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="row">
+                <button class="btn accent big" id="btnToggle">▶  开始自动对弈</button>
+                <button class="btn blue big" id="btnShot">📷 截图测试识别</button>
+                <button class="btn gray big" id="btnDebug">打开调试目录</button>
+            </div>
+            <div class="row">
+                <span class="lbl">我方棋子颜色</span>
+                <div class="seg" id="segColor">
+                    <button data-v="auto" class="on">自动</button>
+                    <button data-v="1">黑</button>
+                    <button data-v="2">白</button>
+                </div>
+            </div>
+            <div class="hint">提示：轮到谁走由双方子数自动判断，与先后手颜色无关。<br>
+                「自动」无需选择颜色：看到落子后即接管，并自动锁定你的棋子颜色；<br>
+                开局第一手若轮到你，程序会自动下在中心 H7。</div>
+            <div class="row">
+                <span class="lbl">引擎</span>
+                <select id="selEngine" class="sel">
+                    <option value="auto">auto</option>
+                    <option value="rapfi">rapfi</option>
+                    <option value="simple">simple</option>
+                </select>
+                <span class="lbl">线程数</span>
+                <input class="inp" id="inpThreads" value="0" maxlength="2"/>
+                <span class="lbl">落子停顿(秒)</span>
+                <select id="selDelay" class="sel">
+                    <option>0.0</option><option>0.5</option><option selected>1.0</option>
+                    <option>1.5</option><option>2.0</option><option>3.0</option>
+                </select>
+                <span class="lbl">思考上限(秒)</span>
+                <select id="selThink" class="sel">
+                    <option>5</option><option>10</option><option>15</option>
+                    <option selected>20</option><option>30</option><option>60</option><option>120</option>
+                </select>
+            </div>
+            <div id="threadsHint" class="hint"></div>
+            <div id="engineInfo" class="hint"></div>
+        </div>
+
+        <div class="card logcard">
+            <div class="logtitle">运行日志</div>
+            <div id="log" class="log"></div>
+        </div>
+    </div>
+</div>
+<script src="./src/main.js" type="module"></script>
+</body>
+</html>

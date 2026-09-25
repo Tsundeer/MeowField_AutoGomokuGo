@@ -1,0 +1,19 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "MeowField_AutoGomokuGo",
+  "outputfilename": "MeowField_AutoGomokuGo",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "Tsundeer",
+    "email": "rjfjrn34@gmail.com"
+  },
+  "info": {
+    "productName": "MeowField_AutoGomoku",
+    "productVersion": "2.0.0.1",
+    "copyright": "Copyright © 2026 薮猫 · GPL-3.0",
+    "comments": "开放空间 自动五子棋（Go + Wails 版）"
+  }
+}
