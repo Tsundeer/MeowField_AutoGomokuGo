@@ -1,4 +1,18 @@
 // MeowField_AutoGomokuGo 前端逻辑（Wails 绑定 + 棋盘渲染）。
+function fmt1(v) {
+    const x = typeof v === "number" ? v : parseFloat(v);
+    return Number.isFinite(x) ? (Math.round(x * 10) / 10).toFixed(1) : "1.0";
+}
+function setSelect(sel, val) {
+    sel.value = val;
+    if (sel.selectedIndex === -1) {
+        const o = document.createElement("option");
+        o.value = o.textContent = val;
+        sel.appendChild(o);
+        sel.value = val;
+    }
+}
+
 // Wails 桌面端运行时注入的全局绑定
 const GetSettings = () => window.go.main.App.GetSettings();
 const SaveSettings = m => window.go.main.App.SaveSettings(m);
@@ -99,7 +113,7 @@ function currentSettings() {
     return {
         our_color: document.querySelector("#segColor .on").dataset.v,
         engine: $("selEngine").value,
-        move_delay: parseFloat($("selDelay").value),
+        move_delay: parseFloat(fmt1($("selDelay").value)),
         engine_threads: parseInt($("inpThreads").value || "0"),
         think_limit: parseFloat($("selThink").value),
         click_offset_x: parseInt($("inpOffX").value || "0"),
@@ -114,9 +128,9 @@ function applySettings(s) {
     document.querySelectorAll("#segColor button").forEach(b =>
         b.classList.toggle("on", b.dataset.v === (s.our_color || "auto")));
     $("selEngine").value = s.engine || "auto";
-    $("selDelay").value = String(s.move_delay ?? 1.0);
+    setSelect($("selDelay"), fmt1(s.move_delay ?? 1.0));
     $("inpThreads").value = String(s.engine_threads ?? 0);
-    $("selThink").value = String(s.think_limit ?? 20);
+    setSelect($("selThink"), String(Math.round(s.think_limit ?? 20)));
     $("inpOffX").value = String(s.click_offset_x ?? 0);
     $("inpOffY").value = String(s.click_offset_y ?? 0);
     if (s.theme) setTheme(s.theme, false);

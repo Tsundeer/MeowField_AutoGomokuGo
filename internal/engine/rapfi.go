@@ -327,8 +327,9 @@ func (a *RapfiAI) BestMove(grid [][]int8, myColor int, timeLimitSec float64) (*M
 	budget := a.TurnTimeMS
 	if timeLimitSec > 0 {
 		budget = int(timeLimitSec * 1000)
-		a.send(fmt.Sprintf("INFO timeout_turn %d", budget))
 	}
+	// 每步必下发预算：引擎的 timeout_turn 可随时调整，无需重启
+	a.send(fmt.Sprintf("INFO timeout_turn %d", budget))
 	a.send("INFO rule 0") // 自由规则（无禁手）
 	a.send("BOARD")
 	stones := 0

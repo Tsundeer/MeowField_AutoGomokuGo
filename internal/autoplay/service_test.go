@@ -205,14 +205,30 @@ func TestScenarioOpeningDeclinedWaits(t *testing.T) {
 	}
 }
 
-func TestScenarioEqualCountsNoBlunder(t *testing.T) {
+func TestScenarioEqualCountsAggressiveOnce(t *testing.T) {
 	h := newHarness("1")
 	h.s.confirmed = nil
-	h.s.active = false
 	h.feed(g(sOnly([][2]int{{7, 7}}, 1)))        // 黑1
-	h.feed(g(sOnly([][2]int{{7, 7}, {6, 6}}, 1))) // 白1 -> 相等, 先行方未知
-	if len(h.clicked) != 0 {
-		t.Fatalf("黑白相等且历史未知不应冒进: %v", h.clicked)
+	h.feed(g(map[[2]int]int8{{7, 7}: 1, {6, 6}: 2})) // 黑1白1 -> 先行方未知
+	h.drainThink()
+	t.Logf("dbg: thinking=%v expected=%d our=%d active=%v await=%d clicked=%v",
+		h.s.thinking, h.s.expected, h.s.ourColor, h.s.active, h.s.awaitR, h.clicked)
+	// 激进接管：按我方先行尝试一次出手
+	if len(h.clicked) != 1 {
+		t.Fatalf("应尝试一次出手: %v", h.clicked)
+	}
+	// 点击未生效（还没轮到我方）-> 重试耗尽后回退等待，不再循环出手
+	for i := 0; i < clickRetriesMax+1; i++ {
+		h.s.awaitDeadline = time.Now().Add(-time.Second)
+		h.s.checkClickTimeout()
+	}
+	if h.s.awaitR != -1 {
+		t.Fatalf("应回退等待: awaiting=%d", h.s.awaitR)
+	}
+	// 回退后不会立即再出手（assumeTried 已置位）
+	h.drainThink()
+	if len(h.clicked) != 1+clickRetriesMax {
+		t.Fatalf("不应重复出手: %v", h.clicked)
 	}
 }
 

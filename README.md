@@ -1,6 +1,6 @@
 # MeowField_AutoGomokuGo 使用说明书
 
-**版本 2.0.0（Go 版）** · 作者与软件署名：薮猫 · 项目仓库：github.com/Tsundeer/MeowField_AutoGomokuGo
+**版本 2.0.1（Go 版）** · 作者与软件署名：薮猫 · 项目仓库：github.com/Tsundeer/MeowField_AutoGomokuGo
 
 面向 Windows 的《开放空间》五子棋自动识别与对弈工具。
 本仓库为 **Go + Wails 重写版**（原 Python 版见 MeowField_AutoGomoku）：

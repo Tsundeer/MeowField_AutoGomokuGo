@@ -70,6 +70,7 @@ type Service struct {
 	colorLocked  bool
 	learning     bool
 	openingTried bool
+	assumeTried  bool // 轮次未知时已做过一次“抢先落子”尝试
 	awaitR, awaitC int
 	awaitDeadline time.Time
 	calibX, calibY int   // 点击偏移自动校准（像素）
@@ -452,6 +453,7 @@ func (s *Service) processChange(stable *domain.BoardGrid) {
 		s.awaitR, s.awaitC = -1, -1
 		s.learning = false
 		s.openingTried = false
+		s.assumeTried = false
 		if s.settings.OurColor == "auto" {
 			s.ourColor = 0
 			s.colorLocked = false
@@ -488,6 +490,9 @@ func (s *Service) processChange(stable *domain.BoardGrid) {
 			}
 		}
 	}
+	s.mu.Lock()
+	s.assumeTried = false
+	s.mu.Unlock()
 	for _, pl := range placements {
 		s.handlePlacement(pl[0], pl[1], int8(pl[2]))
 	}
@@ -645,6 +650,13 @@ func (s *Service) maybeAct() {
 			s.mu.Unlock()
 		}
 		return
+	}
+	// 轮次未知（双方子数相等，如刚开局 1:1）时：按“轮到我方”主动出手。
+	// 若实际还没轮到，游戏会忽略点击，超时后自动回退为等待观测。
+	if s.expected == 0 && s.ourColor != 0 && !s.assumeTried {
+		s.assumeTried = true
+		s.expected = s.ourColor
+		s.log("轮次未知（双方子数相等）：按我方先行尝试出手；若点击未生效将自动回退等待")
 	}
 	if s.ourColor == 0 || s.expected == 0 || s.expected != s.ourColor {
 		s.mu.Unlock()
