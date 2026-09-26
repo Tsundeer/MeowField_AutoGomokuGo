@@ -74,9 +74,16 @@ func FindRapfiExes() []string {
 	return ordered
 }
 
+var enginesDirOverride string
+
+func setEnginesDir(d string) { enginesDirOverride = d }
+
 // EnginesDir 引擎目录：优先 exe 同级 engines/（用户可替换），
 // 否则开发环境仓库根 engines/。
 func EnginesDir() string {
+	if enginesDirOverride != "" {
+		return enginesDirOverride
+	}
 	exe, err := os.Executable()
 	if err == nil {
 		cand := filepath.Join(filepath.Dir(exe), "engines")
@@ -104,6 +111,8 @@ type RapfiAI struct {
 	cmd        *exec.Cmd
 	stdin      *bufio.Writer
 	stdout     *bufio.Reader
+	lineCh     chan string // 常驻 reader 输出（消除多 goroutine 竞争读）
+	lastSpeed  time.Time
 }
 
 // NewRapfiAI 构造（启动延迟到首次 Start/BestMove）。
@@ -125,73 +134,72 @@ func (a *RapfiAI) send(line string) {
 }
 
 // readline 读引擎输出直到出现着法行；跳过 MESSAGE/Depth/Speed 噪声（Speed 节流）。
+// readline 读引擎输出直到出现着法行。
+// 超时策略：先发 STOP 让引擎中断搜索并交出当前最优着法（协议标准做法），
+// 再给 10s 宽限读取；仍无结果才报错。
+// MESSAGE Depth 明细不进日志；Speed 节流；其余 MESSAGE 原样。
 func (a *RapfiAI) readline(timeout time.Duration) (string, error) {
-	deadline := time.Time{}
-	if timeout > 0 {
-		deadline = time.Now().Add(timeout)
+	if a.lineCh == nil { // 兜底（未启动 reader）
+		return "", errors.New("引擎输出流未启动")
 	}
-	var lastSpeed time.Time
+	softDeadline := time.Now().Add(timeout)
+	stopped := false
 	for {
-		if !deadline.IsZero() && time.Now().After(deadline) {
-			return "", errors.New("引擎超时未返回")
+		remain := time.Until(softDeadline)
+		if remain <= 0 && stopped {
+			return "", errors.New("引擎超时未返回着法")
 		}
-		type res struct {
-			line string
-			err  error
-		}
-		ch := make(chan res, 1)
-		go func() {
-			line, err := a.stdout.ReadString('\n')
-			ch <- res{line, err}
-		}()
-		var line string
-		var err error
-		if timeout > 0 {
-			remain := time.Until(deadline)
-			if remain <= 0 {
-				return "", errors.New("引擎超时未返回")
-			}
-			select {
-			case r := <-ch:
-				line, err = r.line, r.err
-			case <-time.After(remain):
-				return "", errors.New("引擎超时未返回")
-			}
-		} else {
-			r := <-ch
-			line, err = r.line, r.err
-		}
-		if err != nil {
-			if a.cmd != nil && a.cmd.ProcessState != nil {
+		select {
+		case line, ok := <-a.lineCh:
+			if !ok {
 				return "", errors.New("引擎进程已退出")
 			}
-			time.Sleep(10 * time.Millisecond)
-			continue
-		}
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		if strings.HasPrefix(line, "?") {
-			a.logf("[rapfi] 错误应答: %s", line)
-			return "", fmt.Errorf("引擎报错: %s", line)
-		}
-		if m := moveRe.FindStringSubmatch(line); m != nil {
-			return line, nil
-		}
-		switch {
-		case strings.HasPrefix(line, "Speed"):
-			if time.Since(lastSpeed) > 3*time.Second {
-				lastSpeed = time.Now()
-				a.logf("[rapfi] %s", line)
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
 			}
-		case strings.HasPrefix(line, "MESSAGE"):
-			a.logf("[rapfi] %s", line)
+			if strings.HasPrefix(line, "?") {
+				a.logf("错误应答: %s", line)
+				return "", fmt.Errorf("引擎报错: %s", line)
+			}
+			if m := moveRe.FindStringSubmatch(line); m != nil {
+				return line, nil
+			}
+			switch {
+			case strings.HasPrefix(line, "Speed"):
+				if time.Since(a.lastSpeed) > 3*time.Second {
+					a.lastSpeed = time.Now()
+					a.logf("%s", line)
+				}
+			case strings.HasPrefix(line, "MESSAGE Depth"):
+				// 搜索明细太密，不写日志
+			case strings.HasPrefix(line, "MESSAGE"):
+				a.logf("%s", line)
+			}
+		case <-time.After(maxDuration(50*time.Millisecond, remain)):
+			if !stopped {
+				stopped = true
+				a.logf("思考超时，发送 STOP 请求引擎交出当前最优着法…")
+				a.mu.Unlock()
+				a.send("STOP")
+				a.mu.Lock()
+				softDeadline = time.Now().Add(10 * time.Second)
+			}
 		}
 	}
 }
 
+func maxDuration(a, b time.Duration) time.Duration {
+	if a > b {
+		return a
+	}
+	return b
+}
+
 func (a *RapfiAI) tryStart(exe string) error {
+	if err := PatchEngineMate(); err != nil {
+		a.logf("config.toml 调整失败（不影响启动）: %v", err)
+	}
 	cmd := exec.Command(exe)
 	cmd.Dir = filepath.Dir(exe)
 	stdin, err := cmd.StdinPipe()
@@ -207,6 +215,29 @@ func (a *RapfiAI) tryStart(exe string) error {
 	if err := cmd.Start(); err != nil {
 		return err
 	}
+	// 常驻 reader：所有输出经 channel 串行分发，杜绝读竞争
+	a.lineCh = make(chan string, 64)
+	go func() {
+		for {
+			line, err := a.stdout.ReadString('\n')
+			if err != nil {
+				close(a.lineCh)
+				return
+			}
+			select {
+			case a.lineCh <- line:
+			default: // 满则丢弃最旧行，保持不阻塞
+				select {
+				case <-a.lineCh:
+				default:
+				}
+				select {
+				case a.lineCh <- line:
+				default:
+				}
+			}
+		}
+	}()
 	a.send(fmt.Sprintf("START 13"))
 	if err := a.expectOK(10 * time.Second); err != nil {
 		return err
@@ -220,26 +251,25 @@ func (a *RapfiAI) tryStart(exe string) error {
 func (a *RapfiAI) expectOK(timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		line, err := a.stdout.ReadString('\n')
-		if err != nil {
-			if a.cmd != nil && a.cmd.ProcessState != nil {
+		select {
+		case line, ok := <-a.lineCh:
+			if !ok {
 				return errors.New("引擎进程已退出")
 			}
-			time.Sleep(10 * time.Millisecond)
-			continue
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			low := strings.ToLower(line)
+			if strings.HasPrefix(low, "ok") {
+				return nil
+			}
+			if strings.HasPrefix(low, "?") {
+				return fmt.Errorf("引擎报错: %s", line)
+			}
+			a.logf("%s", line)
+		case <-time.After(100 * time.Millisecond):
 		}
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		low := strings.ToLower(line)
-		if strings.HasPrefix(low, "ok") {
-			return nil
-		}
-		if strings.HasPrefix(low, "?") {
-			return fmt.Errorf("引擎报错: %s", line)
-		}
-		a.logf("[rapfi] %s", line)
 	}
 	return errors.New("引擎初始化无应答")
 }
