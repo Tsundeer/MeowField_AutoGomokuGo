@@ -237,8 +237,19 @@ window.addEventListener("DOMContentLoaded", async () => {
         b.classList.toggle("accent", !on);
         b.classList.toggle("danger", on);
     });
+    let windowTitle = null;
+    let ourColorUi = null;
+    function refreshStatusLine() {
+        const parts = ["窗口: " + (windowTitle || "未找到")];
+        if (ourColorUi) parts.push("我方执" + ourColorUi);
+        $("status").textContent = parts.join("  ·  ");
+    }
     EventsOn("status", s => { $("status").textContent = s; });
-    EventsOn("our_color", c => { addLog("我方执" + (colorName[c] || "?")); });
+    EventsOn("window", t => { windowTitle = t; refreshStatusLine(); });
+    EventsOn("our_color", c => {
+        ourColorUi = colorName[c] || "?";
+        refreshStatusLine();
+    });
     EventsOn("engine", n => {
         $("engineInfo").textContent = "引擎已就绪: " + n +
             (n === "rapfi" ? "（开源强引擎）" : "（内置简易引擎）");

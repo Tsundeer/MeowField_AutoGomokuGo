@@ -77,6 +77,8 @@ type Service struct {
 	colorLocked  bool
 	learning     bool
 	openingTried bool
+	lastOpenTry  time.Time
+	openAttempts int
 	assumeTried  bool // 轮次未知时已做过一次“抢先落子”尝试
 	awaitR, awaitC int
 	awaitDeadline time.Time
@@ -539,8 +541,10 @@ func (s *Service) processChange(stable *domain.BoardGrid) {
 	}
 	s.mu.Lock()
 	s.assumeTried = false
+	s.openAttempts = 0
 	s.mu.Unlock()
 	for _, pl := range placements {
+		s.handlePlacement(pl[0], pl[1], int8(pl[2]))
 		s.handlePlacement(pl[0], pl[1], int8(pl[2]))
 	}
 
@@ -682,9 +686,15 @@ func (s *Service) maybeAct() {
 		s.mu.Unlock()
 		return
 	}
-	// 先手开局：空盘第一步必为先行方 -> 中心 H7
-	if s.confirmed.IsEmpty() && !s.openingTried {
+	// 先手开局：空盘时第一步必为先行方 -> 中心 H7。
+	// 对局可能尚未真正开始（点击会被游戏忽略），因此每 30s 自动重试，
+	// 最多 10 次；一旦出现任何落子即进入正常的观测/接管流程。
+	if s.confirmed.IsEmpty() &&
+		(!s.openingTried || (time.Since(s.lastOpenTry) >= 30*time.Second &&
+			s.openAttempts < 10)) {
 		s.openingTried = true
+		s.lastOpenTry = time.Now()
+		s.openAttempts++
 		learning := s.ourColor == 0
 		s.learning = learning
 		s.mu.Unlock()
@@ -866,7 +876,7 @@ func (s *Service) clickCell(r, c int) bool {
 		}
 	}
 	capture.ClickAt(sx, sy, clickHold)
-	s.logf("已点击 %s，等待棋盘确认…", CoordLabel(r, c))
+	s.logf("已点击 %s @屏幕(%d,%d)，等待棋盘确认…", CoordLabel(r, c), sx, sy)
 	return true
 }
 
