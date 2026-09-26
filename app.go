@@ -65,6 +65,7 @@ func (a *App) SaveSettings(m map[string]any) error {
 		ThinkLimit:    toF(a.settings["think_limit"]),
 		ClickOffsetX:  int(toF(a.settings["click_offset_x"])),
 		ClickOffsetY:  int(toF(a.settings["click_offset_y"])),
+		MateRush:      toB(a.settings["mate_rush"]),
 	})
 	return nil
 }
@@ -96,6 +97,16 @@ func toS(v any) string {
 		return s
 	}
 	return "auto"
+}
+
+func toB(v any) bool {
+	switch x := v.(type) {
+	case bool:
+		return x
+	case float64:
+		return x != 0
+	}
+	return false
 }
 
 func toF(v any) float64 {
@@ -202,6 +213,7 @@ func run() int {
 		ThinkLimit:    toF(settings["think_limit"]),
 		ClickOffsetX:  int(toF(settings["click_offset_x"])),
 		ClickOffsetY:  int(toF(settings["click_offset_y"])),
+		MateRush:      toB(settings["mate_rush"]),
 	}, func(f string, a ...any) {
 		msg := fmt.Sprintf(f, a...)
 		log.Print(msg)

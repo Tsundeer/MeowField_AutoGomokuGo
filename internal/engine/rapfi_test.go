@@ -19,7 +19,7 @@ func TestPatchEngineMate(t *testing.T) {
 	setEnginesDir(dir)
 	defer setEnginesDir(oldDir)
 
-	if err := PatchEngineMate(); err != nil {
+	if err := PatchEngineMate(true); err != nil {
 		t.Fatal(err)
 	}
 	data, _ := os.ReadFile(filepath.Join(dir, "config.toml"))
@@ -37,7 +37,7 @@ func TestPatchEngineMate(t *testing.T) {
 
 func TestRapfiStopFallback(t *testing.T) {
 
-	ai := NewRapfiAI(500, nil) // 极短预算验证 STOP 交出着法
+	ai := NewRapfiAI(500, true, nil) // 极短预算验证 STOP 交出着法
 	if err := ai.Start(); err != nil {
 		t.Skip("引擎启动失败:", err)
 	}

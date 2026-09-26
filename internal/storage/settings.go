@@ -21,6 +21,7 @@ var Defaults = map[string]any{
 	"theme":          "dark",
 	"click_offset_x": 0,
 	"click_offset_y": 0,
+	"mate_rush":      true,
 }
 
 // AppDataDir %LocalAppData%\MeowField_AutoGomoku。

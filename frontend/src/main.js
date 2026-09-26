@@ -118,6 +118,7 @@ function currentSettings() {
         think_limit: parseFloat($("selThink").value),
         click_offset_x: parseInt($("inpOffX").value || "0"),
         click_offset_y: parseInt($("inpOffY").value || "0"),
+        mate_rush: $("chkMate").checked,
         theme: document.body.dataset.theme,
     };
 }
@@ -133,6 +134,7 @@ function applySettings(s) {
     setSelect($("selThink"), String(Math.round(s.think_limit ?? 20)));
     $("inpOffX").value = String(s.click_offset_x ?? 0);
     $("inpOffY").value = String(s.click_offset_y ?? 0);
+    $("chkMate").checked = s.mate_rush !== false;
     if (s.theme) setTheme(s.theme, false);
     saveHint();
 }
@@ -143,7 +145,10 @@ function saveHint() {
     $("threadsHint").textContent = t === 0
         ? `当前线程数：0（用满全部逻辑核${cpus ? "，本机 " + cpus + " 逻辑核" : ""}）`
         : `当前线程数：${t}`;
-    $("engineInfo").textContent = "思考上限到点或找到必胜即落子";
+    const mate = $("chkMate").checked;
+    $("engineInfo").textContent = mate
+        ? "找到必胜线后快速收尾出招（日志会提示必胜线深度）"
+        : "完整必胜证明模式：耗时可能显著超过思考上限，日志会提示";
 }
 
 async function save() {
@@ -192,6 +197,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     for (const id of ["selEngine", "selDelay", "selThink"])
         $(id).onchange = save;
     $("inpThreads").onchange = save;
+    $("chkMate").onchange = save;
 
     // 后端事件
     EventsOn("board", p => drawBoard(p));

@@ -46,6 +46,7 @@ type Settings struct {
 	ThinkLimit    float64 // 秒；<=0 用引擎默认预算
 	ClickOffsetX  int     // 手动点击偏移（像素）
 	ClickOffsetY  int
+	MateRush      bool    // 必胜快速落子（true=4 层收尾；false=完整证明 24 层）
 }
 
 // Service 自动对弈服务（后台 goroutine）。
@@ -178,7 +179,16 @@ func (s *Service) engineFor() (engine.Engine, error) {
 		s.emit("engine", e.Name())
 		return e, nil
 	}
-	e := engine.NewRapfiAI(int(think*1000), func(f string, a ...any) { s.logf("[rapfi] "+f, a...) })
+	rap := engine.NewRapfiAI(int(think*1000), s.settings.MateRush,
+		func(f string, a ...any) { s.logf("[rapfi] "+f, a...) })
+	rap.OnMate = func(mate string) {
+		if s.settings.MateRush {
+			s.logf("引擎发现必胜线 %s：正在快速收尾，将尽快落子", mate)
+		} else {
+			s.logf("引擎发现必胜线 %s：完整证明模式，耗时可能超过思考上限（可开启「必胜快速落子」）", mate)
+		}
+	}
+	e := rap
 	if err := e.Start(); err != nil {
 		return nil, err
 	}
@@ -276,7 +286,8 @@ func (s *Service) SetSettings(st Settings) {
 	prev := s.settings
 	s.settings = st
 	colorChanged := st.OurColor != prev.OurColor
-	engineChanged := st.EngineKind != prev.EngineKind
+	engineChanged := st.EngineKind != prev.EngineKind ||
+		st.MateRush != prev.MateRush
 	threadsChanged := st.EngineThreads != prev.EngineThreads
 	eng := s.ai
 	s.mu.Unlock()

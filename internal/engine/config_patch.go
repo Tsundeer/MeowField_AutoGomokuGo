@@ -12,11 +12,16 @@ func PatchEngineThreads(threads int) error {
 		"default_thread_num = "+itoa(threads))
 }
 
-// PatchEngineMate 找到必胜后快速收尾（默认 24 层迭代会无视时间限制，
-// 导致深层必胜局面"到我方下棋却不动"）。
-func PatchEngineMate() error {
+// PatchEngineMate 必胜证明收尾层数开关：
+// fast=true（推荐）-> 4 层，找到必胜快速出招；
+// fast=false -> 24 层，完整证明更强但耗时可能远超思考上限。
+func PatchEngineMate(fast bool) error {
+	v := 24
+	if fast {
+		v = 4
+	}
 	return patchConfigLine(`(?m)^num_iteration_after_mate\s*=\s*\d+`,
-		"num_iteration_after_mate = 4")
+		"num_iteration_after_mate = "+itoa(v))
 }
 
 func patchConfigLine(pattern, repl string) error {

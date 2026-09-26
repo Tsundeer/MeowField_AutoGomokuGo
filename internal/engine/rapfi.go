@@ -106,6 +106,8 @@ var moveRe = regexp.MustCompile(`^\s*(\d{1,3})[ ,]+(\d{1,3})\s*$`)
 // RapfiAI Rapfi 子进程引擎（Gomocup/piskvork 协议）。
 type RapfiAI struct {
 	TurnTimeMS int    // 默认每步思考预算（毫秒）
+	MateRush   bool   // true=必胜快速落子(config 4)；false=完整证明(config 24)
+	OnMate     func(mate string) // 检测到必胜线时回调（如 "+M29"）
 	logf       func(string, ...any)
 	mu         sync.Mutex
 	cmd        *exec.Cmd
@@ -113,17 +115,29 @@ type RapfiAI struct {
 	stdout     *bufio.Reader
 	lineCh     chan string // 常驻 reader 输出（消除多 goroutine 竞争读）
 	lastSpeed  time.Time
+	lastMate   string // 本步已报告过的必胜线（去重）
 }
 
 // NewRapfiAI 构造（启动延迟到首次 Start/BestMove）。
-func NewRapfiAI(turnTimeMS int, logf func(string, ...any)) *RapfiAI {
+func NewRapfiAI(turnTimeMS int, mateRush bool, logf func(string, ...any)) *RapfiAI {
 	if turnTimeMS <= 0 {
 		turnTimeMS = 20000
 	}
 	if logf == nil {
 		logf = func(string, ...any) {}
 	}
-	return &RapfiAI{TurnTimeMS: turnTimeMS, logf: logf}
+	return &RapfiAI{TurnTimeMS: turnTimeMS, MateRush: mateRush, logf: logf}
+}
+
+var mateRe = regexp.MustCompile(`Eval ([+-]M\d+)`)
+
+// extractMate 从 Depth 行提取必胜线（如 "+M29"/"-M20"）。
+func extractMate(line string) string {
+	m := mateRe.FindStringSubmatch(line)
+	if m == nil {
+		return ""
+	}
+	return m[1]
 }
 
 func (a *RapfiAI) Name() string { return "rapfi" }
@@ -172,7 +186,13 @@ func (a *RapfiAI) readline(timeout time.Duration) (string, error) {
 					a.logf("%s", line)
 				}
 			case strings.HasPrefix(line, "MESSAGE Depth"):
-				// 搜索明细太密，不写日志
+				// 搜索明细不逐行写日志；但检测到必胜线要显式报告
+				if mate := extractMate(line); mate != "" && mate != a.lastMate {
+					a.lastMate = mate
+					if a.OnMate != nil {
+						a.OnMate(mate)
+					}
+				}
 			case strings.HasPrefix(line, "MESSAGE"):
 				a.logf("%s", line)
 			}
@@ -197,7 +217,7 @@ func maxDuration(a, b time.Duration) time.Duration {
 }
 
 func (a *RapfiAI) tryStart(exe string) error {
-	if err := PatchEngineMate(); err != nil {
+	if err := PatchEngineMate(a.MateRush); err != nil {
 		a.logf("config.toml 调整失败（不影响启动）: %v", err)
 	}
 	cmd := exec.Command(exe)
@@ -349,6 +369,7 @@ func (a *RapfiAI) BestMove(grid [][]int8, myColor int, timeLimitSec float64) (*M
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	a.lastMate = ""
 	if !a.proc_alive() {
 		if err := a.startLocked(); err != nil {
 			return nil, err
