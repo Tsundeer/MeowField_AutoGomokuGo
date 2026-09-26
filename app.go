@@ -12,6 +12,7 @@ import (
 	"unsafe"
 
 	"MeowField_AutoGomokuGo/internal/autoplay"
+	"MeowField_AutoGomokuGo/internal/engine"
 		"MeowField_AutoGomokuGo/internal/storage"
 	"MeowField_AutoGomokuGo/internal/updater"
 	"MeowField_AutoGomokuGo/internal/version"
@@ -66,6 +67,7 @@ func (a *App) SaveSettings(m map[string]any) error {
 		ClickOffsetX:  int(toF(a.settings["click_offset_x"])),
 		ClickOffsetY:  int(toF(a.settings["click_offset_y"])),
 		MateRush:      toB(a.settings["mate_rush"]),
+		GPUDevice:     toS(a.settings["gpu_device"]),
 	})
 	return nil
 }
@@ -85,6 +87,30 @@ func (a *App) OpenDebugDir() {
 	arg, _ := syscall.UTF16PtrFromString(storage.DebugDir())
 	procShellE.Call(0, uintptr(unsafe.Pointer(verb)),
 		uintptr(unsafe.Pointer(arg)), 0, 0, 1)
+}
+
+// EngineInfo 引擎可用性（UI 动态构建下拉）。
+type EngineInfo struct {
+	Name      string `json:"name"`
+	Available bool   `json:"available"`
+	Note      string `json:"note"`
+}
+
+// ListEngines 扫描 engines/ 返回各引擎可用性。
+func (a *App) ListEngines() []EngineInfo {
+	f := engine.DetectEngines()
+	out := []EngineInfo{
+		{Name: "rapfi", Available: len(f.Rapfi) > 0, Note: "CPU 强引擎（推荐）"},
+		{Name: "jax", Available: f.Jax != "", Note: "GPU: CUDA/TensorRT（需自装运行时）"},
+		{Name: "katagomo", Available: f.Katagomo != "", Note: "GPU: CUDA（1.7GB 自备，放 engines/katagomo/）"},
+		{Name: "simple", Available: true, Note: "内置简易引擎（兜底）"},
+	}
+	if a.settings["engine"] == "auto" {
+		// auto 顺序：rapfi 优先
+		out = append([]EngineInfo{{Name: "auto", Available: true,
+			Note: "自动选择可用引擎（推荐）"}}, out...)
+	}
+	return out
 }
 
 // CheckUpdate 检查更新（多端点降级 + 缓存）。
@@ -214,6 +240,7 @@ func run() int {
 		ClickOffsetX:  int(toF(settings["click_offset_x"])),
 		ClickOffsetY:  int(toF(settings["click_offset_y"])),
 		MateRush:      toB(settings["mate_rush"]),
+		GPUDevice:     toS(settings["gpu_device"]),
 	}, func(f string, a ...any) {
 		msg := fmt.Sprintf(f, a...)
 		log.Print(msg)

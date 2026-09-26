@@ -1,4 +1,27 @@
 // MeowField_AutoGomokuGo 前端逻辑（Wails 绑定 + 棋盘渲染）。
+async function buildEngineList() {
+    const list = await ListEngines();
+    const sel = $("selEngine");
+    sel.innerHTML = "";
+    for (const e of list) {
+        const o = document.createElement("option");
+        o.value = e.name;
+        o.textContent = e.available ? e.name : `${e.name}（未安装）`;
+        if (!e.available) o.style.color = "#888";
+        sel.appendChild(o);
+    }
+    sel.value = settings.engine || "auto";
+    if (sel.selectedIndex === -1) sel.value = "auto";
+    updateDeviceVisibility();
+}
+
+function updateDeviceVisibility() {
+    const isJax = $("selEngine").value === "jax";
+    $("lblDevice").style.display = isJax ? "" : "none";
+    $("selDevice").style.display = isJax ? "" : "none";
+    if (isJax) $("selDevice").value = settings.gpu_device || "cuda";
+}
+
 function fmt1(v) {
     const x = typeof v === "number" ? v : parseFloat(v);
     return Number.isFinite(x) ? (Math.round(x * 10) / 10).toFixed(1) : "1.0";
@@ -20,6 +43,7 @@ const StartAuto = () => window.go.main.App.StartAuto();
 const StopAuto = () => window.go.main.App.StopAuto();
 const TestShot = () => window.go.main.App.TestShot();
 const OpenDebugDir = () => window.go.main.App.OpenDebugDir();
+const ListEngines = () => window.go.main.App.ListEngines();
 const CheckUpdate = () => window.go.main.App.CheckUpdate();
 const Version = () => window.go.main.App.Version();
 const EventsOn = (name, cb) => window.runtime.EventsOn(name, cb);
@@ -113,6 +137,7 @@ function currentSettings() {
     return {
         our_color: document.querySelector("#segColor .on").dataset.v,
         engine: $("selEngine").value,
+        gpu_device: $("selDevice").value,
         move_delay: parseFloat(fmt1($("selDelay").value)),
         engine_threads: parseInt($("inpThreads").value || "0"),
         think_limit: parseFloat($("selThink").value),
@@ -123,7 +148,7 @@ function currentSettings() {
     };
 }
 
-function applySettings(s) {
+async function applySettings(s) {
     settings = s;
     const cmap = { auto: "自动", "1": "黑", "2": "白" };
     document.querySelectorAll("#segColor button").forEach(b =>
@@ -136,6 +161,7 @@ function applySettings(s) {
     $("inpOffY").value = String(s.click_offset_y ?? 0);
     $("chkMate").checked = s.mate_rush !== false;
     if (s.theme) setTheme(s.theme, false);
+    if (typeof buildEngineList === "function") { try { await buildEngineList(); } catch (e) {} }
     saveHint();
 }
 
@@ -165,7 +191,8 @@ function setTheme(theme, persist) {
 // ---- 事件绑定 ----
 window.addEventListener("DOMContentLoaded", async () => {
     $("ver").textContent = "v" + await Version();
-    try { applySettings(await GetSettings()); } catch (e) { addLog("读取设置失败: " + e); }
+    try { await applySettings(await GetSettings()); } catch (e) { addLog("读取设置失败: " + e); }
+    try { await buildEngineList(); } catch (e) { addLog("引擎探测失败: " + e); }
     setTheme(settings.theme || "dark", false);
     drawEmpty();
 
@@ -194,8 +221,8 @@ window.addEventListener("DOMContentLoaded", async () => {
             b.classList.add("on");
             save();
         });
-    for (const id of ["selEngine", "selDelay", "selThink"])
-        $(id).onchange = save;
+    for (const id of ["selEngine", "selDelay", "selThink", "selDevice"])
+        $(id).onchange = () => { updateDeviceVisibility(); save(); };
     $("inpThreads").onchange = save;
     $("chkMate").onchange = save;
 

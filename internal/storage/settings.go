@@ -22,6 +22,7 @@ var Defaults = map[string]any{
 	"click_offset_x": 0,
 	"click_offset_y": 0,
 	"mate_rush":      true,
+	"gpu_device":     "cpu",
 }
 
 // AppDataDir %LocalAppData%\MeowField_AutoGomoku。

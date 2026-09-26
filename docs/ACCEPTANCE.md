@@ -31,3 +31,14 @@
 - [x] 必胜检测日志：解析搜索行 Eval ±Mxx，首次发现必胜线时写明
       "引擎发现必胜线 +M29：正在快速收尾/完整证明模式…"，消除"卡死"误解
 - [x] 同批差分停摆回归、配置补丁双态测试、STOP 兜底测试全绿
+
+## v2.1.0 增量验收（2026-09-26，Go 版多引擎集成）
+
+- [x] 引擎发现重构 DetectEngines：engines/ 根（rapfi 兼容旧布局）+ jax/katagomo/alphagomoku 子目录
+- [x] RapfiAI 参数化：Kind/Exe 候选/JaxDevice；JAX configs/config.toml 的 [eval] device 可设 cpu/cuda/tensorrt
+- [x] readline 过滤 DEBUG/UNKNOWN 行（JAX 调试输出）
+- [x] 回退链：选定引擎缺失或启动失败 -> rapfi -> simple（日志写明原因）
+- [x] 实测：AlphaGomoku MK 拒绝 13x13（"Only 15x15 or 20x20"）-> 集成但文档标注不适用；
+      JAX 13x13 出招正常（cpu 模式 2.9s 含模型加载）；device=cuda 在无 CUDA 11.8
+      运行时的机器上初始化挂起 -> 默认 gpu_device=cpu，UI 提示自装运行时后可切
+- [x] ListEngines 绑定：UI 引擎下拉动态显示可用性（未安装置灰）

@@ -43,10 +43,12 @@
                 开局第一手若轮到你，程序会自动下在中心 H7。</div>
             <div class="row">
                 <span class="lbl">引擎</span>
-                <select id="selEngine" class="sel">
-                    <option value="auto">auto</option>
-                    <option value="rapfi">rapfi</option>
-                    <option value="simple">simple</option>
+                <select id="selEngine" class="sel"></select>
+                <span class="lbl" id="lblDevice" style="display:none" title="cuda/tensorrt 需自装 CUDA 11.8 + TensorRT 8.6 运行时；未装请用 cpu">GPU设备</span>
+                <select id="selDevice" class="sel" style="display:none">
+                    <option value="cuda">cuda</option>
+                    <option value="tensorrt">tensorrt</option>
+                    <option value="cpu">cpu</option>
                 </select>
                 <span class="lbl">线程数</span>
                 <input class="inp" id="inpThreads" value="0" maxlength="2"/>

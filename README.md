@@ -1,10 +1,22 @@
 # MeowField_AutoGomokuGo 使用说明书
 
-**版本 2.0.3（Go 版）** · 作者与软件署名：薮猫 · 项目仓库：github.com/Tsundeer/MeowField_AutoGomokuGo
+**版本 2.1.0（Go 版）** · 作者与软件署名：薮猫 · 项目仓库：github.com/Tsundeer/MeowField_AutoGomokuGo
 
 面向 Windows 的《开放空间》五子棋自动识别与对弈工具。
 本仓库为 **Go + Wails 重写版**（原 Python 版见 MeowField_AutoGomoku）：
 单文件 exe（34MB）、启动 <1 秒、内存占用低，界面与功能对齐 Python 版。
+
+## 引擎（多引擎集成）
+
+| 引擎 | 后端 | 13×13 支持 | 集成方式 |
+|---|---|---|---|
+| **Rapfi**（默认） | CPU NNUE | ✅ | 内置 |
+| **JAX** | ONNX Runtime：cpu / **cuda** / **tensorrt** | ✅ 实测 | 内置（默认 cpu；GPU 需自装 CUDA 11.8 + TensorRT 8.6 运行时，界面可选设备） |
+| **Katagomo** | CUDA（KataGo 系） | 未验证 | 用户自备：解压到 `engines/katagomo/`（1.7GB） |
+| **AlphaGomoku MK** | OpenCL | ❌ 仅 15×15/20×20 | 不适用本游戏（说明保留） |
+| **simple** | 内置纯 Go | ✅ | 内置兜底 |
+
+所有引擎走 Gomocup 协议子进程，启动失败自动回退链（选定 → rapfi → simple）。
 
 ## 功能
 

@@ -32,51 +32,7 @@ type Engine interface {
 
 // ---- 引擎定位 ----
 
-var titleRe = regexp.MustCompile(`(?i)rapfi`)
-
-// FindRapfiExes 定位 engines/ 下的 rapfi 可执行文件（按指令集优先排序）。
-// 优先级与 Python 版相反处：avx2 实测最稳放最前。
-func FindRapfiExes() []string {
-	dir := EnginesDir()
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil
-	}
-	var found []string
-	for _, e := range entries {
-		name := e.Name()
-		if !e.IsDir() && strings.HasSuffix(strings.ToLower(name), ".exe") &&
-			strings.Contains(strings.ToLower(name), "rapfi") {
-			found = append(found, filepath.Join(dir, name))
-		}
-	}
-	pref := []string{"avx2", "sse", "avxvnni", "avx512vnni", "avx512"}
-	var ordered []string
-	for _, key := range pref {
-		for _, p := range found {
-			if strings.Contains(strings.ToLower(filepath.Base(p)), key) {
-				ordered = append(ordered, p)
-			}
-		}
-	}
-	for _, p := range found {
-		dup := false
-		for _, o := range ordered {
-			if o == p {
-				dup = true
-				break
-			}
-		}
-		if !dup {
-			ordered = append(ordered, p)
-		}
-	}
-	return ordered
-}
-
-var enginesDirOverride string
-
-func setEnginesDir(d string) { enginesDirOverride = d }
+// 引擎发现逻辑已迁移至 discover.go
 
 // EnginesDir 引擎目录：优先 exe 同级 engines/（用户可替换），
 // 否则开发环境仓库根 engines/。
@@ -98,9 +54,6 @@ func EnginesDir() string {
 	return filepath.Join(wd, "engines")
 }
 
-// HasRapfi 是否存在 rapfi 引擎。
-func HasRapfi() bool { return len(FindRapfiExes()) > 0 }
-
 var moveRe = regexp.MustCompile(`^\s*(\d{1,3})[ ,]+(\d{1,3})\s*$`)
 
 // RapfiAI Rapfi 子进程引擎（Gomocup/piskvork 协议）。
@@ -108,6 +61,9 @@ type RapfiAI struct {
 	TurnTimeMS int    // 默认每步思考预算（毫秒）
 	MateRush   bool   // true=必胜快速落子(config 4)；false=完整证明(config 24)
 	OnMate     func(mate string) // 检测到必胜线时回调（如 "+M29"）
+	Kind       EngineKind // rapfi / jax / katagomo
+	ExeOverride []string // 非 rapfi 引擎直接指定候选 exe
+	JaxDevice  string     // jax 专用：cpu / cuda / tensorrt
 	logf       func(string, ...any)
 	mu         sync.Mutex
 	cmd        *exec.Cmd
@@ -126,7 +82,22 @@ func NewRapfiAI(turnTimeMS int, mateRush bool, logf func(string, ...any)) *Rapfi
 	if logf == nil {
 		logf = func(string, ...any) {}
 	}
-	return &RapfiAI{TurnTimeMS: turnTimeMS, MateRush: mateRush, logf: logf}
+	return &RapfiAI{TurnTimeMS: turnTimeMS, MateRush: mateRush, logf: logf,
+		Kind: KindRapfi}
+}
+
+// NewExternalAI 构造外部 Gomocup 引擎（JAX/Katagomo 等）。
+// exeOverride 为空时按 DetectEngines 自动发现。
+func NewExternalAI(kind EngineKind, turnTimeMS int, jaxDevice string,
+	logf func(string, ...any)) *RapfiAI {
+	if turnTimeMS <= 0 {
+		turnTimeMS = 20000
+	}
+	if logf == nil {
+		logf = func(string, ...any) {}
+	}
+	return &RapfiAI{TurnTimeMS: turnTimeMS, logf: logf,
+		Kind: kind, JaxDevice: jaxDevice}
 }
 
 var mateRe = regexp.MustCompile(`Eval ([+-]M\d+)`)
@@ -185,6 +156,9 @@ func (a *RapfiAI) readline(timeout time.Duration) (string, error) {
 					a.lastSpeed = time.Now()
 					a.logf("%s", line)
 				}
+			case strings.HasPrefix(line, "DEBUG"),
+				strings.HasPrefix(line, "UNKNOWN"):
+				// JAX 等引擎的调试输出，不写日志
 			case strings.HasPrefix(line, "MESSAGE Depth"):
 				// 搜索明细不逐行写日志；但检测到必胜线要显式报告
 				if mate := extractMate(line); mate != "" && mate != a.lastMate {
@@ -217,8 +191,21 @@ func maxDuration(a, b time.Duration) time.Duration {
 }
 
 func (a *RapfiAI) tryStart(exe string) error {
-	if err := PatchEngineMate(a.MateRush); err != nil {
-		a.logf("config.toml 调整失败（不影响启动）: %v", err)
+	if a.Kind == KindRapfi {
+		if err := PatchEngineMate(a.MateRush); err != nil {
+			a.logf("config.toml 调整失败（不影响启动）: %v", err)
+		}
+	}
+	if a.Kind == KindJax {
+		dev := a.JaxDevice
+		if dev == "" {
+			dev = "cuda"
+		}
+		if err := PatchJaxDevice(dev); err != nil {
+			a.logf("JAX 设备设置失败（沿用其配置文件）: %v", err)
+		} else if dev != "cpu" {
+			a.logf("JAX 推理设备: %s（若失败请安装 CUDA 11.8/TensorRT 8.6 或改回 cpu）", dev)
+		}
 	}
 	cmd := exec.Command(exe)
 	cmd.Dir = filepath.Dir(exe)
@@ -302,9 +289,27 @@ func (a *RapfiAI) Start() error {
 }
 
 func (a *RapfiAI) startLocked() error {
-	candidates := FindRapfiExes()
+	var candidates []string
+	var missing string
+	switch a.Kind {
+	case KindJax:
+		f := DetectEngines()
+		if f.Jax != "" {
+			candidates = []string{f.Jax}
+		}
+		missing = "未找到 JAX 引擎：请将 JAX25.zip 解压到 engines/jax/（需 pbrain-Jax.exe）"
+	case KindKatagomo:
+		f := DetectEngines()
+		if f.Katagomo != "" {
+			candidates = []string{f.Katagomo}
+		}
+		missing = "未找到 Katagomo 引擎：请将其解压到 engines/katagomo/（1.7GB CUDA 构建，自备）"
+	default:
+		candidates = DetectEngines().Rapfi
+		missing = "未找到 rapfi 引擎，请将引擎解压到 engines/ 目录"
+	}
 	if len(candidates) == 0 {
-		return errors.New("未找到 rapfi 引擎，请将引擎解压到 engines/ 目录")
+		return errors.New(missing)
 	}
 	var lastErr error
 	for _, exe := range candidates {

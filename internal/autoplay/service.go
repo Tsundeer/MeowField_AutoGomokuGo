@@ -47,6 +47,7 @@ type Settings struct {
 	ClickOffsetX  int     // 手动点击偏移（像素）
 	ClickOffsetY  int
 	MateRush      bool    // 必胜快速落子（true=4 层收尾；false=完整证明 24 层）
+	GPUDevice     string  // JAX 推理设备：cpu / cuda / tensorrt
 }
 
 // Service 自动对弈服务（后台 goroutine）。
@@ -142,10 +143,9 @@ func (s *Service) engineFor() (engine.Engine, error) {
 		s.mu.Unlock()
 		return e, nil
 	}
-	s.offsetX = s.settings.ClickOffsetX
-	s.offsetY = s.settings.ClickOffsetY
 	kind := s.settings.EngineKind
 	think := s.settings.ThinkLimit
+	device := s.settings.GPUDevice
 	mk := s.mkAI
 	s.mu.Unlock()
 	if mk != nil {
@@ -156,18 +156,48 @@ func (s *Service) engineFor() (engine.Engine, error) {
 		s.emit("engine", e.Name())
 		return e, nil
 	}
-	if kind == "simple" {
-		e := engine.NewSimpleAI()
-		if err := e.Start(); err != nil {
-			return nil, err
+
+	found := engine.DetectEngines()
+	rapfiLog := func(f string, a ...any) { s.logf("[rapfi] "+f, a...) }
+
+	// 显式选择 jax / katagomo：不存在则回退链 rapfi -> simple
+	switch kind {
+	case "jax":
+		if found.Jax == "" {
+			s.log("未找到 JAX 引擎（engines/jax/），回退 rapfi")
+			break
+		}
+		rap := engine.NewExternalAI(engine.KindJax, int(think*1000), device,
+			func(f string, a ...any) { s.logf("[jax] "+f, a...) })
+		if err := rap.Start(); err != nil {
+			s.logf("JAX 启动失败: %v —— 回退 rapfi（GPU 推理需 CUDA 11.8/TensorRT 8.6 环境）", err)
+			break
 		}
 		s.mu.Lock()
-		s.ai = e
+		s.ai = rap
 		s.mu.Unlock()
-		s.emit("engine", e.Name())
-		return e, nil
+		s.emit("engine", "jax")
+		return rap, nil
+	case "katagomo":
+		if found.Katagomo == "" {
+			s.log("未找到 Katagomo 引擎（engines/katagomo/，1.7GB CUDA 构建需自备），回退 rapfi")
+			break
+		}
+		rap := engine.NewExternalAI(engine.KindKatagomo, int(think*1000), "",
+			func(f string, a ...any) { s.logf("[katagomo] "+f, a...) })
+		if err := rap.Start(); err != nil {
+			s.logf("Katagomo 启动失败: %v —— 回退 rapfi", err)
+			break
+		}
+		s.mu.Lock()
+		s.ai = rap
+		s.mu.Unlock()
+		s.emit("engine", "katagomo")
+		return rap, nil
 	}
-	if !engine.HasRapfi() {
+
+	// rapfi（auto / 显式 / 回退）
+	if len(found.Rapfi) == 0 {
 		s.log("未找到 rapfi 引擎，回退内置简易引擎")
 		e := engine.NewSimpleAI()
 		if err := e.Start(); err != nil {
@@ -179,24 +209,24 @@ func (s *Service) engineFor() (engine.Engine, error) {
 		s.emit("engine", e.Name())
 		return e, nil
 	}
-	rap := engine.NewRapfiAI(int(think*1000), s.settings.MateRush,
-		func(f string, a ...any) { s.logf("[rapfi] "+f, a...) })
-	rap.OnMate = func(mate string) {
-		if s.settings.MateRush {
-			s.logf("引擎发现必胜线 %s：正在快速收尾，将尽快落子", mate)
-		} else {
-			s.logf("引擎发现必胜线 %s：完整证明模式，耗时可能超过思考上限（可开启「必胜快速落子」）", mate)
+	rap := engine.NewRapfiAI(int(think*1000), s.settings.MateRush, rapfiLog)
+	if err := rap.Start(); err != nil {
+		s.logf("rapfi 启动失败: %v —— 回退内置简易引擎", err)
+		e := engine.NewSimpleAI()
+		if err := e.Start(); err != nil {
+			return nil, err
 		}
-	}
-	e := rap
-	if err := e.Start(); err != nil {
-		return nil, err
+		s.mu.Lock()
+		s.ai = e
+		s.mu.Unlock()
+		s.emit("engine", e.Name())
+		return e, nil
 	}
 	s.mu.Lock()
-	s.ai = e
+	s.ai = rap
 	s.mu.Unlock()
-	s.emit("engine", e.Name())
-	return e, nil
+	s.emit("engine", "rapfi")
+	return rap, nil
 }
 
 func (s *Service) log(format string, args ...any) { s.logf(format, args...) }
