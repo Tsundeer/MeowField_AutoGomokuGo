@@ -42,3 +42,12 @@
       JAX 13x13 出招正常（cpu 模式 2.9s 含模型加载）；device=cuda 在无 CUDA 11.8
       运行时的机器上初始化挂起 -> 默认 gpu_device=cpu，UI 提示自装运行时后可切
 - [x] ListEngines 绑定：UI 引擎下拉动态显示可用性（未安装置灰）
+
+## v2.1.1 增量验收（2026-09-26，Go 版）
+
+- [x] 修复 GPU 设备下拉选不上：onchange 先 save 更新 settings 再刷新可见性，
+      updateDeviceVisibility 不再覆盖用户刚选的值；GPUDevice 变化触发引擎重启
+      （JAX device patch 在启动时执行，切换设备必须重启才生效）
+- [x] 点击未生效诊断：失败时自动保存现场截图（debug/click_fail_*.png）；
+      若最近识别已丢失棋盘网格则提示"对局可能已结束或界面变化"
+      （配合日志 Eval -M2 可判断是终局而非点击 bug）

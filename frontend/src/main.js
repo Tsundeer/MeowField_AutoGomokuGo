@@ -19,7 +19,8 @@ function updateDeviceVisibility() {
     const isJax = $("selEngine").value === "jax";
     $("lblDevice").style.display = isJax ? "" : "none";
     $("selDevice").style.display = isJax ? "" : "none";
-    if (isJax) $("selDevice").value = settings.gpu_device || "cuda";
+    // 仅在设备值为空时给默认，不覆盖用户刚选的值
+    if (isJax && !$("selDevice").value) $("selDevice").value = "cuda";
 }
 
 function fmt1(v) {
@@ -222,7 +223,7 @@ window.addEventListener("DOMContentLoaded", async () => {
             save();
         });
     for (const id of ["selEngine", "selDelay", "selThink", "selDevice"])
-        $(id).onchange = () => { updateDeviceVisibility(); save(); };
+        $(id).onchange = async () => { await save(); updateDeviceVisibility(); };
     $("inpThreads").onchange = save;
     $("chkMate").onchange = save;
 

@@ -12,13 +12,18 @@ package autoplay
 import (
 	"errors"
 	"fmt"
+	"image"
+	"image/png"
 	"math/rand"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"MeowField_AutoGomokuGo/internal/capture"
 	"MeowField_AutoGomokuGo/internal/domain"
 	"MeowField_AutoGomokuGo/internal/engine"
+	"MeowField_AutoGomokuGo/internal/storage"
 	"MeowField_AutoGomokuGo/internal/vision"
 )
 
@@ -317,7 +322,8 @@ func (s *Service) SetSettings(st Settings) {
 	s.settings = st
 	colorChanged := st.OurColor != prev.OurColor
 	engineChanged := st.EngineKind != prev.EngineKind ||
-		st.MateRush != prev.MateRush
+		st.MateRush != prev.MateRush ||
+		st.GPUDevice != prev.GPUDevice // 设备切换需重启 JAX 才会重新 patch
 	threadsChanged := st.EngineThreads != prev.EngineThreads
 	eng := s.ai
 	s.mu.Unlock()
@@ -1008,6 +1014,19 @@ func (s *Service) checkClickTimeout() {
 			return
 		}
 	}
+	// 保存点击失败时的现场截图，便于诊断
+	if frame, _, _, ferr := capture.CaptureClient(s.hwnd); ferr == nil {
+		if path := s.saveImage(frame, "click_fail"); path != "" {
+			s.logf("现场截图已保存: %s", path)
+		}
+	}
+	// 若最近一次识别连网格都丢失，大概率对局已结束/界面变化
+	s.mu.Lock()
+	lost := s.lostCount
+	s.mu.Unlock()
+	if lost >= 1 {
+		s.log("注意：最后一次识别已无法看到棋盘网格——对局可能已结束或界面发生了变化")
+	}
 	s.mu.Lock()
 	s.awaitR, s.awaitC = -1, -1
 	s.clickRetries = 0
@@ -1071,6 +1090,23 @@ func (s *Service) recheckTurn() {
 	if act {
 		s.maybeAct()
 	}
+}
+
+// saveImage 诊断截图（PNG 到 debug 目录，返回路径）。
+func (s *Service) saveImage(img image.Image, tag string) string {
+	dir := storage.DebugDir()
+	_ = os.MkdirAll(dir, 0o755)
+	path := filepath.Join(dir, fmt.Sprintf("%s_%s.png", tag,
+		time.Now().Format("20060102_150405")))
+	f, err := os.Create(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	if err := png.Encode(f, img); err != nil {
+		return ""
+	}
+	return path
 }
 
 func (s *Service) logThrottled(format string, args ...any) {
