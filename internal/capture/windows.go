@@ -375,3 +375,86 @@ func WarmPoint(hwnd uintptr) (p image.Point) {
 	}
 	return image.Point{X: left + w/2, Y: top + 8}
 }
+
+
+// ---- 点击策略（部分游戏会吞掉标准 SendInput 单击，按策略升级重试）----
+
+const (
+	strategySendInputCursor = iota // SetCursorPos + SendInput down/up（默认）
+	strategySendInputBatch         // SendInput 同批次 MOVE(绝对)+DOWN，稍后 UP
+	strategyPostMessage            // 直接向窗口投递 WM_LBUTTONDOWN/UP（客户区坐标）
+	strategyCount
+)
+
+var (
+	procPostMessage     = user32.NewProc("PostMessageW")
+	procGetSystemMetrics = user32.NewProc("GetSystemMetrics")
+)
+
+const (
+	wmMouseMove     = 0x0200
+	wmLButtonDown   = 0x0201
+	wmLButtonUp     = 0x0202
+	mkLButton       = 0x0001
+	mouseMoveAbs    = 0x8000 | 0x0001 // MOVE|ABSOLUTE
+)
+
+func screenSize() (int, int) {
+	w, _, _ := procGetSystemMetrics.Call(0)
+	h, _, _ := procGetSystemMetrics.Call(1)
+	return int(w), int(h)
+}
+
+// ClickWithStrategy 按指定策略点击。
+func ClickWithStrategy(strategy int, hwnd uintptr, screenX, screenY, clientX, clientY int, hold time.Duration) {
+	switch strategy {
+	case strategySendInputBatch:
+		sw, sh := screenSize()
+		if sw <= 0 || sh <= 0 {
+			return
+		}
+		nx := int32(float64(screenX) / float64(sw-1) * 65535)
+		ny := int32(float64(screenY) / float64(sh-1) * 65535)
+		move := inputStruct{Type: inputMouse, Mi: mouseInput{
+			Dx: nx, Dy: ny, DwFlags: mouseMoveAbs}}
+		down := inputStruct{Type: inputMouse, Mi: mouseInput{DwFlags: mouseLeftDown}}
+		up := inputStruct{Type: inputMouse, Mi: mouseInput{DwFlags: mouseLeftUp}}
+		procSendInput.Call(1, uintptr(unsafe.Pointer(&move)), unsafe.Sizeof(move))
+		time.Sleep(40 * time.Millisecond)
+		procSendInput.Call(1, uintptr(unsafe.Pointer(&down)), unsafe.Sizeof(down))
+		time.Sleep(hold)
+		procSendInput.Call(1, uintptr(unsafe.Pointer(&up)), unsafe.Sizeof(up))
+	case strategyPostMessage:
+		if hwnd == 0 {
+			return
+		}
+		lp := uintptr(int32(clientY)<<16) | uintptr(uint16(clientX))
+		procPostMessage.Call(hwnd, wmMouseMove, mkLButton, lp)
+		time.Sleep(60 * time.Millisecond)
+		procPostMessage.Call(hwnd, wmLButtonDown, mkLButton, lp)
+		time.Sleep(hold)
+		procPostMessage.Call(hwnd, wmLButtonUp, 0, lp)
+	default: // strategySendInputCursor
+		MoveMouse(screenX, screenY)
+		time.Sleep(50 * time.Millisecond)
+		miDown := mouseInput{DwFlags: mouseLeftDown}
+		in1 := inputStruct{Type: inputMouse, Mi: miDown}
+		procSendInput.Call(1, uintptr(unsafe.Pointer(&in1)), unsafe.Sizeof(in1))
+		time.Sleep(hold)
+		miUp := mouseInput{DwFlags: mouseLeftUp}
+		in2 := inputStruct{Type: inputMouse, Mi: miUp}
+		procSendInput.Call(1, uintptr(unsafe.Pointer(&in2)), unsafe.Sizeof(in2))
+	}
+}
+
+// StrategyName 策略名（日志用）。
+func StrategyName(strategy int) string {
+	switch strategy {
+	case strategySendInputBatch:
+		return "批量SendInput"
+	case strategyPostMessage:
+		return "窗口消息"
+	default:
+		return "标准SendInput"
+	}
+}

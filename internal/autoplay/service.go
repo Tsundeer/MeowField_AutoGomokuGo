@@ -87,6 +87,7 @@ type Service struct {
 	requestShot   bool
 	clickRetries int
 	giveups      int
+	strategy     int // 当前待确认格的点击策略（失败自动升级）
 	lostCount    int
 
 	hwnd             uintptr
@@ -855,6 +856,10 @@ func (s *Service) finishThink() {
 }
 
 func (s *Service) clickCell(r, c int) bool {
+	return s.clickCellStrategy(r, c, s.strategy)
+}
+
+func (s *Service) clickCellStrategy(r, c int, strategy int) bool {
 	if s.clickCellFn != nil {
 		return s.clickCellFn(r, c)
 	}
@@ -1015,9 +1020,11 @@ func (s *Service) checkClickTimeout() {
 	if retries < clickRetriesMax {
 		s.mu.Lock()
 		s.clickRetries = retries + 1
+		strategy := retries + 1 // 失败自动升级点击策略
+		s.strategy = strategy
 		s.mu.Unlock()
-		s.logf("%s 未确认（%d/%d），重试点击…", label, retries+1, clickRetriesMax)
-		if s.clickCell(r, c) {
+		s.logf("%s 未确认（%d/%d），切换点击方式重试…", label, retries+1, clickRetriesMax)
+		if s.clickCellStrategy(r, c, strategy) {
 			s.mu.Lock()
 			s.awaitDeadline = time.Now().Add(clickTimeout)
 			s.mu.Unlock()
