@@ -79,3 +79,10 @@
 - [x] 来源：torch 2.2.2+cu118 wheel（cudnn8 原生/cufft）+ PyPI nvidia wheels（cudart/cublas）+ zlib 官方 winimage 包（zlibwapi）；全部免登录
 - [x] 实测：device=cuda 下 13x13 出招成功（6.2s 含内核预热，GPU util 42%、显存 3.9GB）
 - [x] 打包：CUDA DLL 从主包抽出为独立 jax-cuda-dlls.zip（主包 jax config 复位 cpu），GPU 用户解压到 engines/jax/ 即启用
+
+## v2.1.6 增量验收（2026-09-26，Go 版）
+
+- [x] 前端下拉归一化（落子停顿/思考上限）：加载值与选项不匹配时动态补选项
+      （修复显示空白与保存 NaN）
+- [x] 接管体验：轮次未知时主动出手一次 + 点击策略三段升级（本版主体已在
+      v2.1.3/v2.1.5 引入，此处一并验收）

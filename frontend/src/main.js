@@ -23,10 +23,6 @@ function updateDeviceVisibility() {
     if (isJax && !$("selDevice").value) $("selDevice").value = "cuda";
 }
 
-function fmt1(v) {
-    const x = typeof v === "number" ? v : parseFloat(v);
-    return Number.isFinite(x) ? (Math.round(x * 10) / 10).toFixed(1) : "1.0";
-}
 function setSelect(sel, val) {
     sel.value = val;
     if (sel.selectedIndex === -1) {
@@ -35,6 +31,11 @@ function setSelect(sel, val) {
         sel.appendChild(o);
         sel.value = val;
     }
+}
+
+function fmt1(v) {
+    const x = typeof v === "number" ? v : parseFloat(v);
+    return Number.isFinite(x) ? (Math.round(x * 10) / 10).toFixed(1) : "1.0";
 }
 
 // Wails 桌面端运行时注入的全局绑定
