@@ -40,8 +40,38 @@ Copy-Item (Join-Path $repoRoot "LICENSE") $stage -ErrorAction SilentlyContinue
 $publishArt = Join-Path $artifacts "publish"
 New-Item -ItemType Directory -Force -Path $publishArt | Out-Null
 $zip = Join-Path $publishArt "MeowField_AutoGomokuGo-$version-win-x64.zip"
+# ---- JAX CUDA DLL 单独成包（GPU 增强包，主包保持轻量）----
+$jaxDir = Join-Path $stage "engines\jax"
+$cudaDlls = @("cudart64_110.dll","cublas64_11.dll","cublaslt64_11.dll",
+  "cudnn64_8.dll","cudnn_adv_infer64_8.dll","cudnn_cnn_infer64_8.dll",
+  "cudnn_ops_infer64_8.dll","cufft64_10.dll","zlibwapi.dll",
+  "cudnn64_9.dll","cudnn_adv64_9.dll","cudnn_cnn64_9.dll",
+  "cudnn_engines_precompiled64_9.dll","cudnn_engines_runtime_compiled64_9.dll",
+  "cudnn_graph64_9.dll","cudnn_heuristic64_9.dll","cudnn_ops64_9.dll")
+$present = $cudaDlls | Where-Object { Test-Path (Join-Path $jaxDir $_) }
+if ($present.Count -gt 0) {
+    $gpuDir = Join-Path $repoRoot "build\jax-cuda-dlls"
+    New-Item -ItemType Directory -Force -Path $gpuDir | Out-Null
+    foreach ($d in $present) {
+        Copy-Item (Join-Path $jaxDir $d) $gpuDir -Force
+        Remove-Item (Join-Path $jaxDir $d) -Force
+    }
+    $gpuZip = Join-Path $publishArt "MeowField_AutoGomokuGo-$version-jax-cuda-dlls.zip"
+    Compress-Archive -Path "$gpuDir\*" -DestinationPath $gpuZip -Force
+    Remove-Item $gpuDir -Recurse -Force
+    # 主包 jax config 复位为 cpu（CUDA DLL 已抽走，避免无运行时用户挂起）
+    $jaxCfg = Join-Path $jaxDir "configs\config.toml"
+    if (Test-Path $jaxCfg) {
+        (Get-Content $jaxCfg -Raw) -replace 'device = "cuda"', 'device = "cpu"' |
+            Set-Content $jaxCfg -Encoding UTF8
+    }
+    Write-Host "JAX GPU 增强包: $gpuZip" -ForegroundColor Green
+
 Compress-Archive -Path "$stage\*" -DestinationPath $zip -Force
 Write-Host "便携版: $zip" -ForegroundColor Green
+
+}
+
 
 # ---- 安装版 ----
 if (-not $SkipInstaller) {

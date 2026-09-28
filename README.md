@@ -11,7 +11,7 @@
 | 引擎 | 后端 | 13×13 支持 | 集成方式 |
 |---|---|---|---|
 | **Rapfi**（默认） | CPU NNUE | ✅ | 内置 |
-| **JAX** | ONNX Runtime：cpu / **cuda** / **tensorrt** | ✅ 实测 | 内置（默认 cpu；GPU 需自装 CUDA 11.8 + TensorRT 8.6 运行时，界面可选设备） |
+| **JAX** | ONNX Runtime：cpu / **cuda** / **tensorrt** | ✅ **GPU 实测通过（RTX 2080 Ti）** | 内置；GPU 加速需另下载 Release 的 **jax-cuda-dlls.zip** 解压到 engines/jax/ （含 CUDA 11.8 运行时 + cuDNN 8 + cufft + zlibwapi，约 1.3GB），然后在界面把 GPU 设备切到 cuda |
 | **Katagomo** | CUDA（KataGo 系） | 未验证 | 用户自备：解压到 `engines/katagomo/`（1.7GB） |
 | **AlphaGomoku MK** | OpenCL | ❌ 仅 15×15/20×20 | 不适用本游戏（说明保留） |
 | **simple** | 内置纯 Go | ✅ | 内置兜底 |

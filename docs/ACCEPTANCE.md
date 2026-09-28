@@ -71,3 +71,11 @@
 - [x] 每次重试自动升级策略并记录所用方式（标准/批量/窗口消息）
 - [x] 已知触发场景：对局未开始/未轮到我方时游戏忽略点击（属正常），
       回退链会等待；本策略升级针对"游戏吞标准单击"的对局
+
+## v2.1.3 增量验收（2026-09-28，Go 版 JAX GPU 实测）
+
+- [x] 显卡确认：RTX 2080 Ti 11GB（此前 1060 3GB 为旧状态）
+- [x] 缺 DLL 逐个定位（PE 导入表分析）：cufft64_10 / cudart64_110 / cublas / 原生 cuDNN 8 / zlibwapi
+- [x] 来源：torch 2.2.2+cu118 wheel（cudnn8 原生/cufft）+ PyPI nvidia wheels（cudart/cublas）+ zlib 官方 winimage 包（zlibwapi）；全部免登录
+- [x] 实测：device=cuda 下 13x13 出招成功（6.2s 含内核预热，GPU util 42%、显存 3.9GB）
+- [x] 打包：CUDA DLL 从主包抽出为独立 jax-cuda-dlls.zip（主包 jax config 复位 cpu），GPU 用户解压到 engines/jax/ 即启用
