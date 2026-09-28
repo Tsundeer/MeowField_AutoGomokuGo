@@ -150,17 +150,25 @@ function currentSettings() {
 }
 
 async function applySettings(s) {
-    settings = s;
+    settings = s || {};
     const cmap = { auto: "自动", "1": "黑", "2": "白" };
     document.querySelectorAll("#segColor button").forEach(b =>
         b.classList.toggle("on", b.dataset.v === (s.our_color || "auto")));
-    $("selEngine").value = s.engine || "auto";
+    // 引擎选项不存在时动态补（避免 null/选中丢失）
+    const engSel = $("selEngine");
+    const engVal = s.engine || "auto";
+    if (![...engSel.options].some(o => o.value === engVal)) {
+        const o = document.createElement("option");
+        o.value = o.textContent = engVal;
+        engSel.appendChild(o);
+    }
+    engSel.value = engVal;
     setSelect($("selDelay"), fmt1(s.move_delay ?? 1.0));
-    $("inpThreads").value = String(s.engine_threads ?? 0);
+    if ($("inpThreads")) $("inpThreads").value = String(s.engine_threads ?? 0);
     setSelect($("selThink"), String(Math.round(s.think_limit ?? 20)));
-    $("inpOffX").value = String(s.click_offset_x ?? 0);
-    $("inpOffY").value = String(s.click_offset_y ?? 0);
-    $("chkMate").checked = s.mate_rush !== false;
+    if ($("inpOffX")) $("inpOffX").value = String(s.click_offset_x ?? 0);
+    if ($("inpOffY")) $("inpOffY").value = String(s.click_offset_y ?? 0);
+    if ($("chkMate")) $("chkMate").checked = s.mate_rush !== false;
     if (s.theme) setTheme(s.theme, false);
     if (typeof buildEngineList === "function") { try { await buildEngineList(); } catch (e) {} }
     saveHint();
@@ -252,7 +260,16 @@ window.addEventListener("DOMContentLoaded", async () => {
     });
     EventsOn("engine", n => {
         $("engineInfo").textContent = "引擎已就绪: " + n +
-            (n === "rapfi" ? "（开源强引擎）" : "（内置简易引擎）");
+            (n === "rapfi" ? "（开源强引擎）" : n === "jax" ? "（GPU ONNX）" : "（内置简易引擎）");
+        // 下拉同步为实际使用的引擎（回退时如实显示）
+        const sel = $("selEngine");
+        if (![...sel.options].some(o => o.value === n)) {
+            const o = document.createElement("option");
+            o.value = o.textContent = n;
+            sel.appendChild(o);
+        }
+        sel.value = n;
+        updateDeviceVisibility();
     });
 });
 
